@@ -934,7 +934,7 @@ local EnableFunctions = {
 					if prompt.ObjectText == "Prometheus's Acrimony" or prompt.ObjectText == "Moly" or prompt.ObjectText == "Legendary Chest" then
 						color = Color3.new(1, 0.92549, 0.490196)
 					end
-					if prompt.ObjectText == "Treasure Chest" or prompt.ObjectText == "Uncommon Chest" or prompt.ObjectText == "Thornflower" or prompt.ObjectText == "Seaweed"  then
+					if prompt.ObjectText == "Treasure Chest" or prompt.ObjectText == "Uncommon Chest" or prompt.ObjectText == "Thornflower" or prompt.ObjectText == "Seaweed" or prompt.ObjectText == "Auric seaweed" or prompt.ObjectText == "Black shard" or prompt.ObjectText == "Dark Sea diamond" or prompt.ObjectText == "Prismatic geode" or prompt.ObjectText == "Stormsalt" or prompt.ObjectText == "Conch" or prompt.ObjectText == "Pearl" or prompt.ObjectText == "Condensed sand" or prompt.ObjectText == "Sand dollar" or prompt.ObjectText == "Clam" or prompt.ObjectText == "Colossal clam" or prompt.ObjectText == "Porceletta" then
 						return
 					end
 					text = prompt.ObjectText
