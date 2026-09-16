@@ -1,1 +1,2403 @@
-test
+--Maid
+local cleanTask
+function cleanTask(oldtask: any)
+	if typeof(oldtask) == "RBXScriptConnection" then
+		oldtask:Disconnect()
+	elseif typeof(oldtask) == "Instance" and oldtask:IsA("Tween") then
+		oldtask:Pause()
+		oldtask:Cancel()
+		oldtask:Destroy()
+	elseif typeof(oldtask) == "thread" then
+		return coroutine.status(oldtask) == "suspended" and task.cancel(oldtask) or nil
+	elseif oldtask.Destroy then
+		oldtask:Destroy()
+	elseif typeof(oldtask) == "table" then
+		for _, task in pairs(oldtask) do
+			cleanTask(task)
+		end
+	end
+end
+
+local Maid = {}
+Maid.__index = Maid
+
+-- Adds new task and cleans old task if it exists
+Maid.__newindex = function(self, index, newTask)
+	local tasks = self.tasks
+	local oldtask = tasks[index]
+	if oldtask == newTask then
+		return
+	end
+
+	tasks[index] = newTask
+
+	if oldtask then
+		cleanTask(oldtask)
+	end
+end
+
+local Maids = {}
+
+function Maid.new()
+	local newMaid = setmetatable({tasks = {}}, Maid)
+	table.insert(Maids, newMaid) 
+	return newMaid
+end
+
+function Maid:Add(task)
+	local taskId = #self.tasks + 1
+	self[taskId] = task
+
+	return task, taskId
+end
+
+-- Cleans task and removes its reference from the task table
+function Maid:Remove(taskId)
+	local tasks = self.tasks
+	local task = tasks[taskId]
+
+	if task then
+		cleanTask(task)
+		tasks[taskId] = nil
+	end
+end
+
+-- Cleans all tasks and empties the tasks table
+function Maid:Clean()
+	local tasks = self.tasks
+	local index, _task = next(tasks)
+
+	while _task ~= nil do
+		tasks[index] = nil
+		cleanTask(_task)
+		index, _task = next(tasks)
+	end
+end
+
+function RemoveMaids()
+	for _, maid in ipairs(Maids) do
+		maid:Clean()
+	end
+	Maids = {}
+end
+
+-- Store old instance properties
+
+local Storage = {}
+Storage.__index = Storage
+
+function Storage.new()
+	return setmetatable({}, Storage)
+end
+
+function Storage:Add(Identifier: any, Property: string, Value: any)
+	if self[Identifier] then return end
+	self[Identifier] = {Property, Value}
+end
+
+function Storage:Remove(Identifier: any)
+	local attributes = self[Identifier]
+	self[Identifier] = nil
+	if attributes then
+		return attributes[1], attributes[2]
+	end
+end
+
+-- Instance wrap
+function WrapInstance(instanceMaid, identifier: any, type: string, parent: Instance?)
+	local maidInstance = instanceMaid[identifier]
+	if maidInstance then
+		return maidInstance
+	end
+
+	local newInstance = Instance.new(type, parent)
+	instanceMaid[identifier] = newInstance
+	local ac; ac = newInstance.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			instanceMaid:Remove(identifier)
+			if ac then
+				ac:Disconnect()
+				ac = nil
+			end
+		end
+	end)
+	return newInstance
+end
+
+-- gui library
+
+local repo = 'https://raw.githubusercontent.com/mstudio45/LinoriaLib/main/'
+
+local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
+local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
+local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
+local Options = Library.Options
+local Toggles = Library.Toggles
+
+local NPCFolder = workspace.NPCs
+
+
+if getgenv().ArcaneOdysseyLibraryLoaded then
+	Library:Notify("Script already loaded.")
+	task.wait(13)
+	Library:Unload()
+	return
+end
+
+Library.ShowToggleFrameInKeybinds = true -- Make toggle keybinds work inside the keybinds UI (aka adds a toggle to the UI). Good for mobile users (Default value = true)
+Library.ShowCustomCursor = false -- Toggles the Linoria cursor globaly (Default value = true)
+Library.NotifySide = "Left" -- Changes the side of the notifications globaly (Left, Right) (Default value = Left)
+
+local Window = Library:CreateWindow({
+	-- Set Center to true if you want the menu to appear in the center
+	-- Set AutoShow to true if you want the menu to appear when it is created
+	-- Set Resizable to true if you want to have in-game resizable Window
+	-- Set ShowCustomCursor to false if you don't want to use the Linoria cursor
+	-- Set UnlockMouseWhileOpen to false if you don't want to unlock the mouse when the UI is toggled
+	-- NotifySide = Changes the side of the notifications (Left, Right) (Default value = Left)
+	-- Position and Size are also valid options here
+	-- but you do not need to define them unless you are changing them :)
+
+	Title = 'Kintama/Arcane Odyssey',
+	Center = true,
+	AutoShow = true,
+	Resizable = true,
+	ShowCustomCursor = true,
+	UnlockMouseWhileOpen = true,
+	NotifySide = "Left",
+	TabPadding = 8,
+	MenuFadeTime = 0.2
+})
+
+local Tabs = {
+	Main = Window:AddTab('Main'),
+	EspTab = Window:AddTab('ESP'),
+	Randoms = Window:AddTab("Random stuff"),
+	MoreFunctions = Window:AddTab('More Functions'),
+	['UI Settings'] = Window:AddTab('UI Settings'),
+	
+}
+
+-- GROUP BOXES
+local MainMovementBox = Tabs.Main:AddLeftGroupbox('Movement')
+local RightGroupBox = Tabs.Main:AddRightGroupbox('Placeholder')
+local LeftEspBox = Tabs.EspTab:AddLeftGroupbox('ESP')
+local LeftRandomBox = Tabs.Randoms:AddLeftGroupbox('Stuff')
+local RightRandomBox = Tabs.Randoms:AddRightGroupbox('More stuff')
+local AttachmentBox = Tabs.Main:AddLeftGroupbox('Attach')
+local LeftFunctionBox = Tabs.MoreFunctions:AddLeftGroupbox('Functions')
+local RightFunctionBox = Tabs.MoreFunctions:AddRightGroupbox('Even more stuff')
+
+-- Constants
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local HttpService = game:GetService("HttpService")
+local TweenService = game:GetService("TweenService")
+
+local BASE_SIZEX = 8
+local BASE_SIZEY = 4
+local defaultEspSize = UDim2.new(1, 0, 1/3, 0)
+local TweenSpeed = 200
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerCharacter = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+local camera = workspace.CurrentCamera
+
+local BoatName = string.format("%sBoat", LocalPlayer.Name)
+local espParts = Instance.new("Folder", workspace)
+
+local MainMaid = Maid.new()
+MainMaid:Add(
+	LocalPlayer.CharacterAdded:Connect(function(character)
+		PlayerCharacter = character
+	end)
+)
+
+-- 
+
+
+local Tweening = { active = false, queue = {} }
+
+Tweening.update = function(dt)
+	Tweening.active = false
+	local current = Tweening.current()
+	if not current then return end
+
+	local part = typeof(current.goal) == "Instance" and current.goal or nil
+	if part and not part.Parent then 
+		return Tweening.stop(current.identifier) 
+	end
+
+	local character = PlayerCharacter
+	if not character then return end
+	local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+	if not humanoidRootPart then return end
+
+
+	Tweening.active = true
+
+	local startPosition = humanoidRootPart.Position
+	local targetCFrame = typeof(current.goal) == "Instance" and current.goal.CFrame or current.goal
+	local targetPosition = targetCFrame.Position
+
+	local distanceToTarget = (targetPosition - startPosition).Magnitude
+	if distanceToTarget <= 0.01 then return end
+
+	local direction = (targetPosition - startPosition) / distanceToTarget
+	local moveDistance = TweenSpeed * dt
+
+	local newPosition = nil
+	if moveDistance >= distanceToTarget then
+		newPosition = targetPosition
+	else
+		newPosition = startPosition + (direction * moveDistance)
+		newPosition = Vector3.new(newPosition.X, newPosition.Y , newPosition.Z)
+	end
+
+	local rotation = (targetCFrame - targetCFrame.Position)
+	local _, _, _, m00, m01, m02, m10, m11, m12, m20, m21, m22 = rotation:GetComponents()
+
+	humanoidRootPart.AssemblyLinearVelocity = Vector3.zero
+	humanoidRootPart.AssemblyAngularVelocity = Vector3.zero
+
+	if m00 == m00 and m01 == m01 and m02 == m02 and m10 == m10 and m11 == m11 and m12 == m12 and m20 == m20 and m21 == m21 and m22 == m22 then
+		humanoidRootPart.CFrame = CFrame.new(newPosition) * rotation
+	else
+		humanoidRootPart.CFrame = CFrame.new(newPosition)
+	end
+
+	local newDistanceToTarget = (targetPosition - newPosition).Magnitude
+	current.reached = false
+	if newDistanceToTarget >= 1.0 then return end
+	if current.swc then return Tweening.stop(current.identifier) end
+	current.reached = true
+end
+
+function Tweening.get(identifier)
+	for idx, data in next, Tweening.queue do
+		if data.identifier == identifier then
+			return idx, data
+		end
+	end
+	return nil
+end
+
+function Tweening.current()
+	return Tweening.queue[#Tweening.queue]
+end
+
+function Tweening.goal(identifier, goal, swc)
+	local _, data = Tweening.get(identifier)
+	if data then
+		data.goal = goal
+		data.swc = swc
+		data.reached = false
+	else
+		table.insert(Tweening.queue, 1, { identifier = identifier, goal = goal, swc = swc, reached = false })
+	end
+end
+
+function Tweening.stop(identifier)
+	local idx, _ = Tweening.get(identifier)
+	if idx then
+		table.remove(Tweening.queue, idx)
+	end
+end
+
+function Tweening.clear()
+	Tweening.queue = {}
+	Tweening.active = false
+end
+
+
+-- MOBILITY
+local noclipParts = Storage.new()
+function UpdateNoclip()
+	if not PlayerCharacter then return end
+
+	for _, instance in ipairs(PlayerCharacter:GetChildren()) do
+
+		if instance:IsA("BasePart") then
+			noclipParts:Add(instance.Name, "CanCollide", instance.CanCollide)
+			instance.CanCollide = false
+		end
+	end
+end
+
+local boatNoClipParts = Storage.new()
+function UpdateBoatNoclip()
+	if not workspace.Boats:FindFirstChild(BoatName) then return end
+
+	for _, instance in ipairs(workspace.Boats[BoatName]:GetDescendants()) do
+
+		if instance:IsA("BasePart") then
+			boatNoClipParts:Add(instance, "CanCollide", instance.CanCollide)
+			instance.CanCollide = false
+		end
+	end
+end
+
+
+local flyMaid = Maid.new()
+function UpdateFly()
+	local rootPart = PlayerCharacter and PlayerCharacter:FindFirstChild("HumanoidRootPart")
+	if not rootPart then return end
+
+	local ForwardValue = UserInputService:IsKeyDown(Enum.KeyCode.W) and -1 or 0
+	local BackwardValue = UserInputService:IsKeyDown(Enum.KeyCode.S) and 1 or 0
+	local RightValue = UserInputService:IsKeyDown(Enum.KeyCode.D) and 1 or 0
+	local LeftValue = UserInputService:IsKeyDown(Enum.KeyCode.A) and -1 or 0
+	local UpValue = UserInputService:IsKeyDown(Enum.KeyCode.Space) and 1 or 0
+
+	local flyVelocity = camera.CFrame:VectorToWorldSpace(
+		Vector3.new(
+			LeftValue + RightValue,
+			0,
+			ForwardValue + BackwardValue
+		) * Options.FlySpeed.Value
+	) + Vector3.new(
+		0,
+		UpValue * Options.FlySpeed.Value,
+		0
+	)
+
+	rootPart.AssemblyLinearVelocity = flyVelocity
+end
+
+function UpdateSpeedHack()
+	if Toggles.Fly.Value then
+		return
+	end
+
+	local rootPart = PlayerCharacter and PlayerCharacter:FindFirstChild("HumanoidRootPart")
+	local hum = PlayerCharacter and PlayerCharacter:FindFirstChildOfClass("Humanoid")
+
+	if not rootPart or not hum then
+		return
+	end
+
+	rootPart.AssemblyLinearVelocity = rootPart.AssemblyLinearVelocity * Vector3.new(0, 1, 0)
+
+	local Speed = Options.SpeedhackSpeed.Value
+	local Direction = hum.MoveDirection
+
+	if Direction.Magnitude <= 0.001 then
+		return
+	end
+
+	rootPart.AssemblyLinearVelocity = rootPart.AssemblyLinearVelocity + Direction.Unit * Speed
+end
+
+function UpdateBoatSpeed()
+	local boat = workspace.Boats:FindFirstChild(BoatName)
+
+	local center = boat and boat:FindFirstChild("Center")
+	if center then
+		local forward = 0
+		local sideways = 0
+
+		if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+			forward = 1
+		elseif UserInputService:IsKeyDown(Enum.KeyCode.S) then
+			forward = -1
+		end
+
+		if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+			sideways = -1
+		elseif UserInputService:IsKeyDown(Enum.KeyCode.D) then
+			sideways = 1
+		end
+
+		center.Anchored = false
+
+		local speed = Options.BoatSpeedbox.Value
+		local velocity =
+			(center.CFrame.LookVector * forward +
+				center.CFrame.RightVector * sideways) * speed
+
+		center.AssemblyLinearVelocity = velocity
+	end
+end
+
+function UpdateInfiniteJump()
+	if Toggles.Fly.Value then
+		return
+	end
+
+	local rootPart = PlayerCharacter and PlayerCharacter:FindFirstChild("HumanoidRootPart")
+
+	if not rootPart then 
+		return
+	end
+
+	if not UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+		return
+	end
+
+	rootPart.AssemblyLinearVelocity = Vector3.new(rootPart.AssemblyLinearVelocity.X, Options.InfiniteJumpBoost.Value, rootPart.AssemblyLinearVelocity.Z)
+end
+
+function getHPColor(percent)
+	percent = math.clamp(percent, 0, 100)
+	local t = percent
+	local hue = t * 0.33
+	return Color3.fromHSV(hue, 1, 1)
+end
+
+function checkAlly(entity: Model): boolean
+	return false
+end
+
+-- ESP
+
+local function RemoveEsp(esp)
+	if not esp then return end
+
+	if esp.Billboard then
+		esp.Billboard:Destroy()
+	end
+
+end
+
+local function createEntityESP(entity: Instance, color: Color3, text: string?)
+	if not entity then
+		return nil
+	end
+
+	local rootPart =
+		entity:FindFirstChild("HumanoidRootPart")
+		or entity:FindFirstChildWhichIsA("BasePart")
+		or entity
+
+	if not rootPart or not rootPart:IsA("BasePart") then
+		return nil
+	end
+
+	local esp = {}
+
+	-- Billboard
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "ESPBillboard"
+	billboard.Adornee = rootPart
+	billboard.AlwaysOnTop = true
+	billboard.Size = UDim2.fromOffset(100, 50)
+	billboard.StudsOffset = Vector3.new(0, 3.7, 0)
+	billboard.Parent = espParts
+	billboard.Adornee = rootPart
+
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Text = text or entity.Name
+	label.TextColor3 = color or Color3.new(1,1,1)
+	label.TextStrokeTransparency = 0
+	label.TextScaled = true
+	label.Font = Enum.Font.GothamBold
+	label.Parent = billboard
+
+	label.Name = "TextLabel"
+
+	esp.Billboard = billboard
+	esp.Label = label
+
+	return esp
+end
+
+function UpdateEspColor(esp, color)
+	if esp then
+		esp.Billboard.TextLabel.TextColor3 = color
+	end
+end
+
+function UpdateEsp(entity, esp)
+	if esp then
+		local hum = entity and entity:FindFirstChildOfClass("Humanoid")
+		local health
+		local maxhealth
+		if not hum then
+			if entity:FindFirstChild("Attributes") then
+				if entity.Attributes:FindFirstChild("Health") then
+					health = entity.Attributes.Health.Value
+					maxhealth = entity.Attributes.MaxHealth.Value
+				end
+			end
+		else
+			health = hum.Health
+			maxhealth = hum.MaxHealth
+		end
+		if hum then
+			esp.Billboard.TextLabel.Text = entity.Name .. " " .. math.floor(health) .. "/" .. math.floor(maxhealth)
+		else
+			esp.Billboard.TextLabel.Text = entity.Name
+		end
+		return true
+	else
+		return false
+	end
+end
+
+local ChestESPs = {}
+local ChestRemoveConns = {}
+local function trackChest(chest)
+	local obj =  chest:FindFirstChild("ChestObj") 
+	if obj and chest.Name ~= "Private Storage" and (chest.Name ~= "Treasure Chest" or Toggles.TreasureChestToggle.Value)  and not chest:FindFirstChild("Open") then
+		if chest:IsA("Model") then
+			local part = chest.PrimaryPart or chest:FindFirstChildWhichIsA("BasePart")
+			if part then
+				local color = Options.ChestEspColor.Value
+				if chest.Name ~= "Treasure Chest" and chest.Name ~= "Uncommon Chest" and chest.Name ~= "Rare Chest" then
+					local h, s, v = color:ToHSV()
+					color = Color3.fromHSV((h + 0.5) % 1, math.clamp(s + 0.4, 0.7, 1), math.clamp(v + 0.2, 0.7, 1))
+				end
+				local esp = createEntityESP(chest, color, chest.Name)
+				ChestESPs[chest] = esp
+				ChestRemoveConns[chest] = chest.ChildAdded:Connect(function(child)
+					if child.Name == "Open" then
+						esp:Destroy()
+						ChestESPs[chest] = nil
+						ChestRemoveConns[chest]:Disconnect()
+						ChestRemoveConns[chest] = nil
+					end
+				end)
+			end
+		end
+	end
+end
+
+
+local PlayerEsps = {}
+local MobEsps = {}
+local NPCEsps = {}
+local UnloadMobEsp = {}
+local DarkSeaEsps = {}
+
+-- esp end
+
+function UpdateAttachToEntity(entity: Model)
+	local root: BasePart? = PlayerCharacter and PlayerCharacter:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return true
+	end
+
+	if not entity then
+		return
+	end
+
+	local EntityRootPart: BasePart? = entity:FindFirstChild("HumanoidRootPart")
+		or entity.PrimaryPart
+		or entity:FindFirstChildOfClass("BasePart")
+
+	if not EntityRootPart then
+		return
+	end
+
+	local EntityHumanoid: Humanoid? = entity:FindFirstChildOfClass("Humanoid")
+	if not EntityHumanoid or EntityHumanoid.Health <= 0 then
+		return
+	end
+
+	local IsPlayer = Players:GetPlayerFromCharacter(entity)
+	if not Toggles.AttachToPlayers.Value and IsPlayer then
+		return
+	end
+
+	if not Toggles.AttachToMobs.Value and not IsPlayer then
+		return
+	end
+
+	if not PlayerCharacter:FindFirstChildOfClass("Humanoid") then
+		return
+	end
+
+	PlayerCharacter.Humanoid.AutoRotate = false
+	PlayerCharacter.Humanoid.PlatformStand = true
+
+
+	local Latitude = math.rad(Options.AttachLatitude.Value)
+	local Longitude = math.rad(Options.AttachLongitude.Value)
+	local Length = Options.AttachLength.Value
+
+	local x = math.cos(Latitude) * math.cos(Longitude) * Length
+	local y = math.sin(Latitude) * Length
+	local z = math.cos(Latitude) * math.sin(Longitude) * Length
+
+	local offsetPosition = (EntityRootPart.CFrame * CFrame.new(x, y, z)).Position
+	local targetCFrame = CFrame.lookAt(offsetPosition, EntityRootPart.Position)
+
+	Tweening.goal("TweenToBack", targetCFrame, false)
+
+	return true
+end
+
+function getClosestEntity(PlayerAllowed: boolean?, MobsAllowed: boolean?): Model?
+	local closestEnemy, closestDistance = nil, math.huge
+	
+	local function processObject(obj)
+		if not obj then return end
+		local IsPlayer = Players:GetPlayerFromCharacter(obj)
+
+		if (not PlayerAllowed and IsPlayer) or obj == PlayerCharacter then
+			return
+		end
+
+		if not MobsAllowed and not IsPlayer then
+			return
+		end
+
+		if obj:IsA("Model") and (obj:FindFirstChildOfClass("Humanoid") and obj:FindFirstChild("HumanoidRootPart")) or obj:FindFirstChild("Attributes") then
+
+			if obj:FindFirstChildOfClass("Humanoid") then
+				if obj:FindFirstChildOfClass("Humanoid").Health <= 0 then
+					return
+				end
+			elseif obj:FindFirstChild("Attributes") and obj.Attributes:FindFirstChild("Health") then
+				if obj:FindFirstChild("Attributes").Health.Value <= 0 then
+					return
+				end
+			end
+
+			local distance = (obj.HumanoidRootPart.Position - PlayerCharacter.HumanoidRootPart.Position).Magnitude
+			if distance < closestDistance then
+				closestEnemy = obj
+				closestDistance = distance
+			end
+		end
+	end
+	for _, obj in ipairs(workspace.Enemies:GetChildren()) do
+		processObject(obj)
+	end
+	
+	for _, obj in ipairs(Players:GetPlayers()) do
+		processObject(obj.Character)
+	end
+	return closestEnemy
+end
+
+function tpToTarget(effect: any)
+	if effect.Name == "Blast" and effect:IsA("BasePart") then
+		local target = getClosestEntity(Toggles.PvpToggle.Value, Toggles.PveToggle.Value)
+		if not target then return end
+
+		local targetHRP = target:FindFirstChild("HumanoidRootPart")
+		if not targetHRP then return end
+
+		if effect:IsA("BasePart") then
+			task.spawn(function()
+				while effect.Parent == workspace.Effects do
+					if target and targetHRP then
+						effect.CFrame = targetHRP.CFrame
+						task.wait()
+					else break
+					end
+				end
+			end)
+		end					
+	end
+end
+
+function getClosestBoat(pve: boolean?, pvp: boolean?): Model?
+	if not PlayerCharacter then return nil end
+
+	local hrp = PlayerCharacter:FindFirstChild("HumanoidRootPart")
+	if not hrp then return nil end
+
+	local bestDist = math.huge
+	local closestBoat
+	for _, boat in ipairs(workspace.Boats:GetChildren()) do
+		if not pvp and boat:FindFirstChild("Owner") and boat.Owner.Value and boat.Owner.Value ~= LocalPlayer then
+			continue
+		end
+		if not pve and not boat:FindFirstChild("Owner") then
+			continue
+		end
+
+		local primaryPart = boat.PrimaryPart
+		if not primaryPart then
+			continue
+		end
+
+		local dura = boat:FindFirstChild("Dura") 
+		if not dura or dura.Value <= 0 then
+			continue
+		end
+
+		local distance = (primaryPart.Position - hrp.Position).Magnitude
+		if distance < bestDist then
+			bestDist = distance
+			closestBoat = boat
+		end
+	end
+	return closestBoat
+end
+
+function tpCannonBallToTarget(effect: any)
+	if effect.Name ~= "Cannonball" then
+		return
+	end
+
+	if not effect:IsA("BasePart") then
+		return
+	end
+	if Toggles.CannonFortToggle.Value then
+		task.spawn(function()
+			local placeId = game.PlaceId
+			local tCF = CFrame.new(0,0,0)
+			if placeId == 12604352060 then
+				tCF = CFrame.new(18924.5762, 460.34613, 12807.1475)
+			elseif placeId == 15449776494 then
+				tCF = CFrame.new(3044.59399, 515.677246, -8690.51758)
+			end
+			while effect.Parent == workspace.Effects do
+				effect.CFrame = tCF
+				task.wait()						
+			end
+		end)
+	else
+		local targetBoat = getClosestBoat(Options.CannonPveToggle.Value, Options.CannonPvpToggle.Value)
+		if not targetBoat then return end
+
+		local targetPart = targetBoat.PrimaryPart
+		if not targetPart then return end
+
+		task.spawn(function()
+			while effect.Parent == workspace.Effects do
+				if targetBoat and targetPart then
+					effect.CFrame = targetPart.CFrame
+					task.wait()
+				else break
+				end
+			end
+		end)
+	end
+end
+
+
+function getEntityClosestToCamera(AllyAllowed: boolean?, PlayerAllowed: boolean?, MobAllowed: boolean?)
+	local camera = workspace.CurrentCamera
+
+	local closestAngle, closestDistance = 0, 5000
+	local closestEntity = nil
+	for _, obj in ipairs(workspace.Enemies:GetChildren()) do
+		if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") and obj:FindFirstChild("HumanoidRootPart") then
+			if obj == PlayerCharacter then
+				continue
+			end
+			if not AllyAllowed and checkAlly(obj) then
+				continue
+			end
+
+			local isPlayer = Players:GetPlayerFromCharacter(obj) 
+
+			if not PlayerAllowed and isPlayer then
+				continue
+			end
+
+			if not MobAllowed and not isPlayer then
+				continue
+			end
+
+			local root = obj.HumanoidRootPart
+			local direction = (root.Position - camera.CFrame.Position).Unit
+			local angle = camera.CFrame.LookVector:Dot(direction)
+			local distance = (root.Position - camera.CFrame.Position).Magnitude
+			if angle > closestAngle and distance < closestDistance then
+				closestEntity = obj
+				closestAngle = angle
+				closestDistance = distance
+			end
+		end
+	end
+	return closestEntity
+end
+
+function UpdateCameraLookAt(lookAt: Vector3)
+	local camera = workspace.CurrentCamera
+	camera.CFrame = CFrame.lookAt(camera.CFrame.Position, lookAt)
+end
+
+--------------------------------		
+-- enables functions
+local EnableFunctions = {
+	--ESP
+	PlayerEsp = function()
+		for _, player in ipairs(Players:GetPlayers()) do
+			if player == LocalPlayer then 
+				continue
+			end
+
+			local char = player.Character
+			if not char then
+				continue
+			end
+			local esp = createEntityESP(char, Options.PlayerEspColor.Value)
+			PlayerEsps[char] = esp
+		end
+	end,
+	TpAttacksToTarget = function()
+		MainMaid["EffectsAddedConn"] = workspace.Effects.ChildAdded:Connect(tpToTarget)
+	end,
+	TpCannonballsToTarget = function()
+		MainMaid["EffectsAddedConn2"] = workspace.Effects.ChildAdded:Connect(tpCannonBallToTarget)
+	end,
+	MobEsp = function()
+
+		local function checkMob(mob)
+			if mob == PlayerCharacter then 
+				return
+			end
+ 
+			if Players:GetPlayerFromCharacter(mob) then
+				return
+			end
+			
+			if not Toggles.SharkEsp.Value and mob.Name == "Shark"  then
+				return
+			end
+			
+			RemoveEsp(MobEsps[mob])
+			local esp = createEntityESP(mob, Options.MobEspColor.Value)
+			MobEsps[mob] = esp
+		end
+
+		for _, mob in ipairs(workspace.Enemies:GetChildren()) do
+			checkMob(mob)
+		end
+		MainMaid["MobAdded"] = workspace.Enemies.ChildAdded:Connect(checkMob)
+	end, 
+	UnloadMobEsp = function()
+		local function checkMob(mob)
+			if mob == PlayerCharacter then 
+				return
+			end
+
+			if Players:GetPlayerFromCharacter(mob) then
+				return
+			end
+
+			RemoveEsp(MobEsps[mob])
+			local esp = createEntityESP(mob)
+			UnloadMobEsp[mob] = esp
+		end
+
+		for _, mob in ipairs(game.ReplicatedStorage.RS.UnloadEnemies:GetChildren()) do
+			checkMob(mob)
+		end
+		MainMaid["UnloadMobAdded"] = game.ReplicatedStorage.RS.UnloadEnemies.ChildRemoved:Connect(checkMob)
+	end,
+	MeatToggle = function()
+		MainMaid["MeatConn"] = task.spawn(function() 
+			while task.wait(0.1) do
+				local args = {
+					[1] = Options.MeatType.Value
+				}
+
+				game:GetService("ReplicatedStorage"):WaitForChild("RS"):WaitForChild("Remotes"):WaitForChild("Misc"):WaitForChild("BirdKill"):FireServer(unpack(args))
+			end
+		end)
+	end,
+	ChestESP = function()
+		local iterate = {
+			workspace.Map,
+			game.ReplicatedStorage.RS.UnloadIslands
+		}
+		for _, parent in ipairs(iterate) do
+			for _, island in ipairs(parent:GetChildren()) do
+				for _, v in ipairs(island:GetChildren()) do
+					if typeof(v) == "Instance" and v.Name == "Chests" then
+						for _, chest in v:GetChildren() do
+							trackChest(chest)
+						end
+						MainMaid["ChestAdded"] = v.ChildAdded:Connect(function(chest)
+							trackChest(chest)
+						end)
+					end
+				end
+			end
+		end
+	end,
+	DarkSeaEsp = function()
+		local function createDarkEsp(prompt)
+			if prompt:IsA("ProximityPrompt") or prompt.Name == "HecateEssence" or prompt.Name == "AthenaWisdom" then
+				local parent = prompt.Parent
+				local color = Color3.new(1,1,1)
+				local text
+				if  prompt.Name == "HecateEssence" then
+					color = Color3.new(0.364706, 0, 1)
+					text = "Hecate"
+				elseif prompt.Name == "AthenaWisdom" then
+					color = Color3.new(0.619608, 1, 0.482353)
+					text = "Athena Note"
+				else
+					if prompt.ObjectText == "Prometheus's Acrimony" or prompt.ObjectText == "Moly" or prompt.ObjectText == "Legendary Chest" then
+						color = Color3.new(1, 0.92549, 0.490196)
+					end
+					if prompt.ObjectText == "Treasure Chest" or prompt.ObjectText == "Uncommon Chest" or prompt.ObjectText == "Thornflower" or prompt.ObjectText == "Seaweed"  then
+						return
+					end
+					text = prompt.ObjectText
+				end
+				local parent = prompt.Parent
+				if prompt.Name == "HecateEssence" or prompt.Name == "AthenaWisdom" then
+					parent = prompt
+				end
+				local esp = createEntityESP(parent, color, text)
+				DarkSeaEsps[prompt] = esp
+			end
+		end
+		for _, prompt in ipairs(workspace.Map.SeaContent.DarkSea:GetDescendants()) do
+			createDarkEsp(prompt)
+		end
+
+		for _, chest in ipairs(workspace.Map.Temporary:GetChildren()) do
+			local prox = chest:FindFirstChild("Prompt")
+			if chest.Name == "Dark Sealed Chest" and prox then
+				local esp = createEntityESP(chest, Color3.new(0.564706, 0.419608, 0.654902))
+				DarkSeaEsps[chest] = esp
+			end
+		end
+
+		MainMaid["DarkSeaConn1"] = workspace.Map.SeaContent.DarkSea.DescendantAdded:Connect(function(child)
+			createDarkEsp(child)
+		end)
+
+		MainMaid["DarkSeaConn2"] = workspace.Map.Temporary.ChildAdded:Connect(function(chest)
+			local prox = chest:FindFirstChild("Prompt")
+			if chest.Name == "Dark Sealed Chest" and prox then
+				local esp = createEntityESP(chest, Color3.new(0.564706, 0.419608, 0.654902), chest.Name)
+				DarkSeaEsps[chest] = esp
+			end
+		end)
+
+		MainMaid["DarkSeaConn3"] = workspace.Map.SeaContent.DarkSea.DescendantRemoving:Connect(function(child)
+			if child:IsA("ProximityPrompt") then
+				DarkSeaEsps[child]:Destroy()
+				DarkSeaEsps[child] = nil
+			end
+		end)
+
+		MainMaid["DarkSeaConn4"] =  workspace.Map.Temporary.ChildRemoved:Connect(function(child)
+			if child.Name == "Dark Sealed Chest" then
+				DarkSeaEsps[child]:Destroy()
+				DarkSeaEsps[child] = nil
+			end
+		end)
+	end,
+	NPCEsp = function()
+
+		local function makeEsp(npc)
+			if not npc:IsA("Model") then
+				return
+			end
+			local esp = createEntityESP(npc, Color3.new(0,1,1))
+			NPCEsps[npc] = esp
+		end
+
+		for _, npc in ipairs(NPCFolder:GetDescendants()) do
+			makeEsp(npc)
+		end
+		
+		for _, npc in ipairs(ReplicatedStorage.UnloadNPCs:GetChildren()) do
+			makeEsp(npc)
+		end
+
+		MainMaid["NPCAdded2"] = ReplicatedStorage.UnloadNPCs.ChildAdded:Connect(makeEsp)
+		MainMaid["NPCAdded"] = NPCFolder.DescendantAdded(makeEsp)
+	end,
+
+	-- OTHER
+	PlayerNotifier = function()
+		for _, plr in game.Players:GetPlayers() do
+			if plr ~= LocalPlayer then
+				Library:Notify(`{plr.Name} has joined the game.`)
+			end
+		end
+	end,
+	ModNotifier = function()
+		for _, plr in game.Players:GetPlayers() do
+			if plr:IsInGroupAsync(3596833) then
+				local rank = plr:GetRoleInGroupAsync(3596833)
+				if rank:match("Game Moderator") or rank:match("Game Mod Lead") or rank:match("Developer") then
+					Library:Notify(`{plr.Name} is a moderator.`)
+				end
+			end
+		end
+	end,
+	AttachToEnemy = function()
+		if not PlayerCharacter then
+			return
+		end
+
+		local closestEnemy
+		local StartAttaching: ()->()
+		local function AttachToEnemy()
+			MainMaid.AttachToEnemy = RunService.RenderStepped:Connect(function()
+				local EnemyExisting = UpdateAttachToEntity(closestEnemy)
+				if not EnemyExisting then
+					local hum = PlayerCharacter and PlayerCharacter:FindFirstChildOfClass("Humanoid")
+					if hum then
+						hum.AutoRotate = true
+						hum.PlatformStand = false
+					end
+					StartAttaching()
+				end
+			end)
+		end
+
+		StartAttaching = function()
+			MainMaid:Remove("AttachToEnemy")
+			closestEnemy = getClosestEntity(Toggles.AttachToPlayers.Value, Toggles.AttachToMobs.Value)
+			MainMaid.WaitingForAttach = task.spawn(function()
+				while not closestEnemy do
+					task.wait(1)
+					closestEnemy = getClosestEntity(Toggles.AttachToPlayers.Value, Toggles.AttachToMobs.Value)
+				end
+				AttachToEnemy()
+			end)
+
+		end
+
+		StartAttaching()
+	end,
+	LockOn = function()
+		if not PlayerCharacter then
+			return
+		end
+
+		local closestEnemy
+		local StartAttaching: ()->()
+		local function StartLockOn()
+			MainMaid.LockOnConn = RunService.RenderStepped:Connect(function()
+				local root = closestEnemy and closestEnemy:FindFirstChild("HumanoidRootPart")
+				local hum = closestEnemy and closestEnemy:FindFirstChildOfClass("Humanoid")
+				if not root or not hum or hum.Health <= 0 then
+					StartAttaching()
+				else
+					local plrRoot = PlayerCharacter and PlayerCharacter:FindFirstChild("HumanoidRootPart")
+					if not plrRoot then
+						return
+					end
+
+					local plrPos = plrRoot.Position
+					local enemyPos = root.Position
+					local distance = (Vector2.new(plrPos.X, plrPos.Z) - Vector2.new(enemyPos.X, enemyPos.Z)).Magnitude
+					if distance <= Options.LockOnDistance.Value then
+						return
+					end
+					UpdateCameraLookAt(root.Position)
+				end
+			end)
+		end
+
+		StartAttaching = function()
+			MainMaid:Remove("LockOnConn")
+			MainMaid.WaitingForEntity = task.spawn(function()
+				closestEnemy = getEntityClosestToCamera(Toggles.AttachToAllies.Value, Toggles.AttachToPlayers.Value, Toggles.AttachToMobs.Value)
+				while not closestEnemy do
+					task.wait(1)
+					closestEnemy = getEntityClosestToCamera(Toggles.AttachToAllies.Value, Toggles.AttachToPlayers.Value, Toggles.AttachToMobs.Value)
+				end
+				StartLockOn()
+			end)
+		end
+
+		StartAttaching()
+	end,
+}
+
+-- toggles functions to disable
+local godModeTask = nil
+local DisableFunctions = {
+	NoClip = function()
+		MainMaid:Remove("NoClipConn")
+		for name, _ in pairs(noclipParts) do
+			if not PlayerCharacter then return end
+			local part = PlayerCharacter:FindFirstChild(name)
+			local property, value = noclipParts:Remove(name) 
+			if part then
+				part[property] = value
+			end
+		end
+	end,
+	TpAttacksToTarget = function()
+		MainMaid:Remove("EffectsAddedConn")
+	end,
+	TpCannonballsToTarget = function()
+		MainMaid:Remove("EffectsAddedConn2")
+	end,
+	BoatNoClip = function()
+		MainMaid:Remove("NoClipConn")
+		for part, _ in pairs(boatNoClipParts) do
+			if not part then return end
+			local property, value = boatNoClipParts:Remove(part) 
+			if part then
+				part[property] = value
+			end
+		end
+	end,
+	Fly = function()
+		MainMaid:Remove("FlyConn")
+		flyMaid:Remove("flyBodyVelocity")
+		local hrp = PlayerCharacter and PlayerCharacter:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			hrp.Anchored = false
+		end
+	end,
+	SpeedHack = function()
+		MainMaid:Remove("SpeedHackConn")
+	end,
+	InfiniteJump = function()
+		MainMaid:Remove("InfiniteJumpConn")
+	end,
+	GalleonFarmToggle = function()
+		MainMaid:Remove("GalleonToggle")
+	end,
+	-- ESP
+	PlayerEsp = function()
+		for i, esp in pairs(PlayerEsps) do
+			RemoveEsp(esp)
+			PlayerEsps[i] = nil
+		end
+		PlayerEsps = {}
+	end,
+	MobEsp = function()
+		for i, esp in pairs(MobEsps) do
+			RemoveEsp(esp)
+		end
+		MobEsps = {}
+		MainMaid:Remove("MobAdded")
+	end,
+	
+	ChestESP = function()
+		for i, esp in pairs(ChestESPs) do
+			RemoveEsp(esp)
+		end
+		ChestESPs = {}
+		MainMaid:Remove("ChestAdded")
+	end,
+	DarkSeaEsp = function()
+		for i, esp in pairs(DarkSeaEsps) do
+			RemoveEsp(esp)
+		end
+		DarkSeaEsps = {}
+		MainMaid:Remove("DarkSeaConn1")
+		MainMaid:Remove("DarkSeaConn2")
+		MainMaid:Remove("DarkSeaConn3")
+		MainMaid:Remove("DarkSeaConn4")
+	end,
+	MeatToggle = function()
+		MainMaid:Remove("MeatToggle")
+	end,
+	
+	NPCEsp = function()
+		for i, esp in pairs(NPCEsps) do
+			RemoveEsp(esp)
+		end
+		NPCEsps = {}
+		MainMaid:Remove("NPCAdded")
+		MainMaid:Remove("NPCAdded2")
+
+	end,
+	UnloadMobEsp = function()
+		for i, esp in pairs(UnloadMobEsp) do
+			RemoveEsp(esp)
+		end
+		NPCEsps = {}
+		MainMaid:Remove("UnloadMobAdded")
+	end,
+	AttachToEnemy = function()
+		MainMaid:Remove("AttachToEnemy")
+		MainMaid:Remove("AttachPosition")
+		MainMaid:Remove("WaitingForAttach")
+		Tweening.stop("TweenToBack")
+		local hum = PlayerCharacter and PlayerCharacter:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum.AutoRotate = true
+			hum.PlatformStand = false
+		end
+	end,
+	LockOn = function()
+		MainMaid:Remove("LockOnConn")
+		MainMaid:Remove("WaitingForEntity")
+	end,
+	GodModeToggle = function()
+		if godModeTask and hookmetamethod then
+			hookmetamethod(game, "__namecall", godModeTask)
+		end
+	end,
+	AutoFishToggle = function()
+		MainMaid:Remove("AutoFishToggle")
+		MainMaid:Remove("SecondAutoFishConn")
+		game:GetService("ReplicatedStorage").RS.Remotes.Misc.FishState:FireServer("StopClock")
+	end,
+}
+
+
+function onCharacterAdded(player, character)
+	if Toggles.PlayerEsp.Value then
+		if player ~= LocalPlayer then
+			RemoveEsp(PlayerEsps[character])
+			local esp = createEntityESP(character, Options.PlayerEspColor.Value)
+			PlayerEsps[character] = esp	
+		end
+	end
+end
+
+function onCharacterRemoved(player, character)
+	if Toggles.PlayerEsp.Value then
+		if PlayerEsps[character] then
+			RemoveEsp(PlayerEsps[character])
+			PlayerEsps[character] = nil
+		end
+	end
+end
+
+for i, v in ipairs(Players:GetPlayers()) do
+	local charAdd = v.CharacterAdded:Connect(function(char)
+		onCharacterAdded(v, char)
+	end)
+
+	local charRemove = v.CharacterRemoving:Connect(function(char)
+		onCharacterRemoved(v, char)
+	end)
+	MainMaid:Add(charAdd)
+	MainMaid:Add(charRemove)
+end
+
+-- CONNECTIONS
+
+local PlayerAddedConnection = Players.PlayerAdded:Connect(function(player)
+	if Toggles.PlayerNotifier.Value then
+		Library:Notify(`{player.Name} has joined the game.`)
+	end
+	
+	if Toggles.ModNotifier.Value then
+		local plr = player
+		if plr:IsInGroupAsync(3596833) then
+			local rank = plr:GetRoleInGroupAsync(3596833)
+			if rank:match("Game Moderator") or rank:match("Game Mod Lead") or rank:match("Developer") then
+				Library:Notify(`{plr.Name} is a moderator.`)
+			end
+		end
+	end
+
+	local CharacterAddedConnection = player.CharacterAdded:Connect(function(character)
+		onCharacterAdded(player, character)
+	end)
+
+	local CharacterRemovingConnection = player.CharacterRemoving:Connect(function(character)
+		onCharacterRemoved(player, character)
+	end)
+
+	MainMaid[player.UserId .. "CharacterAdded"] = CharacterAddedConnection
+	MainMaid[player.UserId .. "CharacterRemoving"] = CharacterRemovingConnection
+end)
+MainMaid:Add(PlayerAddedConnection)
+
+local PlayerRemovingConnection = Players.PlayerRemoving:Connect(function(player)
+	MainMaid:Remove(player.UserId .. "CharacterAdded")
+	MainMaid:Remove(player.UserId .. "CharacterRemoving")
+end)
+MainMaid:Add(PlayerRemovingConnection)
+
+local ConstantHeartbeatConnection = RunService.Heartbeat:Connect(function(dt)
+	if Toggles.NoClip and Toggles.NoClip.Value then
+		UpdateNoclip()
+	end
+	
+	if Toggles.BoatNoClip and Toggles.BoatNoClip.Value then
+		UpdateBoatNoclip()
+	end
+	
+	if Toggles.Fly and Toggles.Fly.Value then
+		UpdateFly()
+	end
+
+	if Toggles.SpeedHack and Toggles.SpeedHack.Value then
+		UpdateSpeedHack()
+	end
+
+	if Toggles.InfiniteJump and Toggles.InfiniteJump.Value then
+		UpdateInfiniteJump()
+	end
+	
+	if Toggles.BoatSpeed  and Toggles.BoatSpeed.Value then
+		UpdateBoatSpeed()
+	end
+	
+	if Toggles.BoatKillAura and Toggles.BoatKillAura.Value then
+		local closestEnemy
+		local pvp = Toggles.PvpBoatToggle.Value
+		local pve = Toggles.PveBoatToggle.Value
+		for _, boat in ipairs(workspace.Boats:GetChildren()) do
+			if not pvp and boat:FindFirstChild("Owner") and boat.Owner.Value and boat.Owner.Value ~= LocalPlayer then
+				continue
+			end
+			if not pve and not boat:FindFirstChild("Owner") then
+				continue
+			end
+
+			local primaryPart = boat.PrimaryPart
+			if not primaryPart then
+				continue
+			end
+
+			local dura = boat:FindFirstChild("Dura") 
+			if not dura or dura.Value <= 0 then
+				continue
+			end
+
+			local plrHRP = PlayerCharacter and PlayerCharacter:FindFirstChild("HumanoidRootPart")
+			if plrHRP then
+				local pos = primaryPart.Position
+				local plrPos = plrHRP.Position
+				local distance = (pos - plrPos).Magnitude
+				if distance <= Options.BoatKillAuraSlider.Value then
+					task.spawn(function()
+						for i = 1, 100 do
+							local args = {
+								0,
+								PlayerCharacter,
+								boat,
+								LocalPlayer.Backpack:FindFirstChild(Options.FightingStyleBox.Value),
+								"Attack"
+							}
+							game.ReplicatedStorage.RS.Remotes.Combat.DealDamageBoat3:FireServer(unpack(args))
+						end
+					end)
+				end
+			end
+		end
+	end
+
+	if Toggles.KillAura and Toggles.KillAura.Value then
+		local closestEnemy
+		local pvp = Toggles.PvpToggleKill.Value
+		local pve = Toggles.PveToggleKill.Value
+		local enemy = getClosestEntity(pvp, pve)
+		
+		local pos = PlayerCharacter and PlayerCharacter:FindFirstChild("HumanoidRootPart") and PlayerCharacter.HumanoidRootPart.Position
+		if pos and enemy then
+			local enemyHRP = enemy:FindFirstChild("HumanoidRootPart")
+			if enemyHRP then
+				local distance = (enemyHRP.Position - pos).Magnitude
+				if distance <= Options.KillAuraSlider.Value then
+					local args = {
+						PlayerCharacter,
+						enemy,
+						"Metal Magic",
+						"1",
+						'["Blast",1,20,20,true,"Two Hands","25","Pulsar","Drill","Metal"]',
+						1,
+						1
+					}
+					game.ReplicatedStorage.RS.Remotes.Magic.DealAttackDamage:FireServer(unpack(args))
+				end
+			end
+		end
+	end
+
+	for i,v in pairs(PlayerEsps) do
+		if not UpdateEsp(i,v) then
+			RemoveEsp(v)
+			PlayerEsps[i] = nil
+		end
+	end
+
+	for i,v in pairs(MobEsps) do
+		if not UpdateEsp(i,v) then
+			RemoveEsp(v)
+			MobEsps[i] = nil
+		end
+	end
+	Tweening.update(dt)
+end)
+MainMaid:Add(ConstantHeartbeatConnection)
+
+-- Library stuff
+
+function CreateToggle(Box: unknown, Name: string, Args: {Text: string?, Tooltip: string?, DisabledTooltip: string?, Default: boolean?, Disabled: boolean?, Risky: boolean?, Visible: boolean?}, NoKeyPicker: boolean?)
+	local tgl = Box:AddToggle(Name, Args)
+	if not NoKeyPicker then
+		tgl:AddKeyPicker(Name, {
+			Default = '',
+			Text = Args["Text"],
+			SyncToggleState = true
+		})
+	end
+	local function toggle()
+		if tgl.Value then
+			if EnableFunctions[Name] then
+				EnableFunctions[Name]()	
+			end
+		else
+			if DisableFunctions[Name] then
+				DisableFunctions[Name]()
+			end
+		end
+	end
+	tgl:OnChanged(toggle)
+end
+
+MainMovementBox:AddSlider('FlySpeed', {
+	Text = 'Fly Speed',
+	Default = 150,
+	Min = 50,
+	Max = 2000,
+	Rounding = 1,
+})
+
+MainMovementBox:AddSlider('SpeedhackSpeed', {
+	Text = 'Speed Hack Speed',
+	Default = 50,
+	Min = 50,
+	Max = 1000,
+	Rounding = 1,
+})
+
+MainMovementBox:AddSlider('InfiniteJumpBoost', {
+	Text = 'Inf Jump Boost',
+	Default = 50,
+	Min = 10,
+	Max = 500,
+	Rounding = 1,
+})
+
+
+LeftEspBox:AddLabel('PlayerEspColor'):AddColorPicker('PlayerEspColor', {
+	Default = Color3.new(1, 1, 1), 
+	Title = 'Player ESP Color',
+	Transparency = 0,
+	Callback = function(color)
+		for i, v in pairs(PlayerEsps) do
+			UpdateEspColor(v, color)
+		end
+	end,
+})
+
+LeftEspBox:AddLabel('MobEspColor'):AddColorPicker('MobEspColor', {
+	Default = Color3.new(1, 0.7, 0.7), 
+	Title = 'Mob ESP Color',
+	Transparency = 0,
+	Callback = function(color)
+		for i, v in pairs(MobEsps) do
+			UpdateEspColor(v, color)
+		end
+	end,
+})
+
+LeftEspBox:AddToggle('SharkEsp', {Text = "Esp sharks", Tooltip = "Toggle shark esp on mob esp"})
+
+
+AttachmentBox:AddSlider('AttachLongitude', {
+	Text = 'Longitude',
+	Default = 0,
+	Min = 0,
+	Max = 360,
+	Rounding = 1,
+})
+
+
+AttachmentBox:AddSlider('AttachLatitude', {
+	Text = 'Latitude',
+	Default = 0,
+	Min = 0,
+	Max = 360,
+	Rounding = 1,
+})
+
+AttachmentBox:AddSlider('AttachLength', {
+	Text = 'Attaching length',
+	Default = 12,
+	Min = -30,
+	Max = 30,
+	Rounding = 1,
+})
+
+LeftRandomBox:AddDropdown("MeatType", {
+	Values = {
+		"Sparrow",
+		"Raven",
+		"Seagull",
+		"Blue Raven",
+		"Eagle"
+	},
+	Default = 1, 
+	Multi = false, 
+
+	Text = 'Select meat farm',
+	Tooltip = '', 
+
+})
+
+CreateToggle(LeftRandomBox, "MeatToggle", {	Text = "Toggle meat farm",
+	Tooltip = "Automatically gives meat",}, true)
+
+
+LeftRandomBox:AddButton({
+	Text = 'Buy all near npc items',
+	Tooltip = 'Buys all of item of nearest npc (need to be close)',
+	Func = function()
+		local shopkeepers = workspace.NPCs:QueryDescendants(">Model>Model:has(>Folder#Attributes:has(>Folder#ShopItems))")
+		local hrp = PlayerCharacter.HumanoidRootPart
+
+		for i, shop in ipairs(shopkeepers) do
+			local attributes = shop:FindFirstChild("Attributes")
+			local shopItems = attributes and attributes:FindFirstChild("ShopItems")
+			if not attributes or not shopItems then
+				continue
+			end
+
+			if (hrp.Position - shop.WorldPivot.Position).Magnitude > 10 then
+				continue 
+			end
+
+			for _, item in ipairs(shopItems:GetChildren()) do
+				if (hrp.Position - shop.WorldPivot.Position).Magnitude > 10 then
+					break 
+				end
+				local stockValue = item:FindFirstChild("Stock")
+				local stock = stockValue and stockValue.Value
+				if not stock or stock <= 0 then
+					continue
+				end
+				local args = {
+					shop,
+					item.Value,
+					"",
+					stock
+				}
+
+				task.spawn(function()
+					ReplicatedStorage.RS.Remotes.Misc.BuyItem:InvokeServer(unpack(args))
+				end)
+			end
+		end
+
+	end,
+})
+
+
+LeftRandomBox:AddInput('Deckhand', {
+	Text = "Insert Deckhand Number",
+	Tooltip = 'Insert deckhand number to change task',
+	Default = '',
+	Numeric = true,
+	Finished = false
+})
+
+LeftRandomBox:AddInput('DeckhandTask', {
+	Text = "Insert Deckhand task",
+	Tooltip = 'Insert task to give to deckhand',
+	Default = '',
+	Finished = false
+})
+
+LeftRandomBox:AddButton({
+	Text = "Give task",
+	Tooltip = "Gives inserted task to deckhand",
+	Func = function()
+		local args = {
+			tostring(Options.Deckhand.Value),
+			"CommandTask",
+			Options.DeckhandTask.Value
+		}
+		game:GetService("ReplicatedStorage"):WaitForChild("RS"):WaitForChild("Remotes"):WaitForChild("Boats"):WaitForChild("Castaway"):FireServer(unpack(args))
+	end,
+})
+
+LeftRandomBox:AddButton({
+	Text = "Restock Supplies",
+	Tooltip = "Restock fleet supplies",
+	Func = function()
+		local args = {
+			"1",
+			"FleetResupply"
+		}
+		game:GetService("ReplicatedStorage"):WaitForChild("RS"):WaitForChild("Remotes"):WaitForChild("Boats"):WaitForChild("Castaway"):FireServer(unpack(args))
+	end,
+})
+
+LeftRandomBox:AddButton({
+	Text = "Discover all islands",
+	Tooltip = "Discovers all islands",
+	Func = function()
+		for _, island in workspace.Map:GetChildren() do
+			local args = {
+				island.Name,
+				""
+			}
+			ReplicatedStorage.RS.Remotes.Misc.UpdateLastSeen:FireServer(unpack(args))
+		end
+	end,
+})
+
+LeftRandomBox:AddToggle('GalleonFarmToggle', {
+	Text = "Toggle farm galleons",
+	Tooltip = "Automatically gives galleons",
+	Default = false,
+	Callback = function(Value)
+		if Value then
+			MainMaid.GalleonToggle = task.spawn(function()
+				while task.wait(0.1) do
+					local Event = ReplicatedStorage.RS.Remotes.Combat.CitizenKillCredit
+
+					Event:FireServer("Thief")
+				end
+			end)
+
+		else
+			DisableFunctions["GalleonFarmToggle"]()
+		end
+	end,
+})
+
+LeftRandomBox:AddInput('DrachmaAmount', {
+	Text = "Insert Drachma Amount",
+	Tooltip = 'Insert drachma amount to withdraw/deposit \nTakes from paramount bank',
+	Default = '',
+	Numeric = true,
+	Finished = false
+})
+
+LeftRandomBox:AddButton({
+	Text = "Withdraw drachma",
+	Tooltip = "Withdraws drachma from paramount bank",
+	Func = function()
+		local args = {
+			Options.DrachmaAmount.Value
+		}
+		ReplicatedStorage.RS.Remotes.Misc.Banks.WithdrawBankDrachma:InvokeServer(unpack(args))
+	end,
+})
+
+LeftRandomBox:AddButton({
+	Text = "Deposit drachma",
+	Tooltip = "Deposits drachma from paramount bank",
+	Func = function()
+		local args = {
+			Options.DrachmaAmount.Value
+		}
+		ReplicatedStorage.RS.Remotes.Misc.Banks.DepositBankDrachma:InvokeServer(unpack(args))
+	end,
+})
+
+LeftRandomBox:AddButton({
+	Text = "Upgrade bank",
+	Tooltip = "Upgrades bank if enough money stored",
+	Func = function()
+		ReplicatedStorage.RS.Remotes.Misc.Banks.UpgradeBank:InvokeServer()
+	end,
+})
+
+LeftRandomBox:AddButton({
+	Text = "Disable dark sea rain",
+	Tooltip = "Disables dark sea rain",
+	Func = function()
+		ReplicatedStorage.RS.Remotes.Misc.RainEffect:Destroy()
+	end,
+})
+
+LeftRandomBox:AddButton({
+	Text = "Disable insanity",
+	Tooltip = "Disables effects",
+	Func = function()
+		ReplicatedStorage.RS.Modules.Insanity:Destroy()
+	end,
+})
+
+LeftEspBox:AddLabel('Chest Esp Color'):AddColorPicker('ChestEspColor', {
+	Default = Color3.new(1, 1, 1), 
+	Title = 'CHEST ESP COLOR', 
+	
+})
+
+LeftEspBox:AddToggle("TreasureChestToggle",{
+	Text = 'Toggle "treasure chest" esp',
+	Default = false,
+	Tooltip = 'Will make chest esp show/hide chests with name "Treasure Chest" \n You have to re enable chest esp to update',
+
+})
+
+
+LeftFunctionBox:AddSlider('DamageMultiSlider', {
+	Text = 'Damage Multiplier',
+	Default = 1,
+	Min = 1,
+	Max = 100,
+	Rounding = 1,
+	Compact = false,
+})
+
+LeftFunctionBox:AddToggle("GodModeToggle", {
+	Text = 'Npc God Mode \ Dmg Multi',
+	Default = false,
+	Tooltip = 'Makes npcs unable to hit you / deal increased dmg \nrequires hookmetamethod',
+	Callback = function(Value)
+		if Value then
+			godModeTask = hookmetamethod(game, "__namecall", newcclosure(function(remote, ...)
+				local getmethod = getnamecallmethod or getnamecall
+				if getmethod and not checkcaller() then
+					local method = getmethod()
+					if method == "FireServer" then
+						local args = {...}
+						local function damageMulti()
+							for i = 1, math.floor(Options.DamageMultiSlider.Value) do
+								godModeTask(remote, unpack(args))
+								task.wait()
+							end
+						end
+						if remote.Name == "TouchDamage" then
+							return
+						elseif remote.Name == "DealBossDamage" then
+							if args[2] == PlayerCharacter then
+								return
+							end
+						elseif remote.Name == "TakeSideDamage" then
+							return
+						elseif remote.Name == "DealAttackDamage" then
+							if args[2] == PlayerCharacter then
+								return
+							else
+								local old, new = Options.CurrentMagic.Value, Options.NewMagic.Value
+								if old ~= '' and old ~= new then
+									args[1] = workspace
+									args[3] = new
+								end
+								damageMulti()
+								return
+							end
+						elseif remote.Name == "DealWeaponDamage" then
+							if args[3] == PlayerCharacter then
+								return
+							else
+								damageMulti()
+								return
+							end
+						elseif remote.Name == "DealSWDamage" then
+							if args[3] == PlayerCharacter then
+								return
+							else
+								damageMulti()
+								return
+							end
+						elseif remote.Name == "DealStrengthDamage" then
+							if args[3] == PlayerCharacter then
+								return
+							else
+								damageMulti()
+								return
+							end
+						elseif remote.Name == "DealAnimalDamage" then
+							if args[2] == PlayerCharacter then
+								return
+							end
+						end
+					end
+				end
+				return godModeTask(remote, ...)
+			end))
+		else
+			DisableFunctions["GodModeToggle"]()
+		end
+	end,
+}):AddKeyPicker("GodModeToggleKey", {
+	Default = "",
+	SyncToggleState = true,
+	Text = "God Mode / Dmg Multi"
+})
+
+LeftFunctionBox:AddDivider()
+
+LeftFunctionBox:AddInput("ItemName",
+	{
+		Default = "",
+		Finished = false,
+		Text = "Item to modify",
+		Tooltip = "Modifies the stats of the item. \nMake sure to put the item name (enchant name not included)"
+	}
+)
+
+LeftFunctionBox:AddInput("SizeStat",
+	{
+		Default = "",
+		Numeric = true,
+		Finished = false,
+		Text = "Size stat",
+		Tooltip = ""
+	}
+)
+
+LeftFunctionBox:AddInput("RangeStat",
+	{
+		Default = "",
+		Numeric = true,
+		Finished = false,
+		Text = "Range stat",
+		Tooltip = ""
+	}
+)
+
+LeftFunctionBox:AddInput("DexterityStat",
+	{
+		Default = "",
+		Numeric = true,
+		Finished = false,
+		Text = "Dexterity stat",
+		Tooltip = ""
+	}
+)
+
+LeftFunctionBox:AddToggle("ItemStatToggle", {
+	Text = "Apply stats",
+	Tooltip = "Applies the select stats to selected item. \n (toggle bugged)",
+	Default = false,
+	Callback = function(Value)
+		if Value then
+			local modu = require(game.ReplicatedStorage.RS.Modules.Inventory)
+			local item = modu.Items[Options.ItemName.Value]
+			local istats = item["Stats"]
+			local size = tonumber(Options.SizeStat.Value)
+			local range = tonumber(Options.RangeStat.Value)
+			local dexterity = tonumber(Options.DexterityStat.Value)
+			local values = {
+				Size = size,
+				Range = range,
+				Dexterity = dexterity
+			} 
+			if istats then
+
+				for i, v in pairs(values) do
+					if v then
+						istats[i] = v
+					end
+				end
+			else
+				item["Stats"] = values
+			end
+		end
+	end,
+})
+
+LeftFunctionBox:AddDivider()
+
+LeftFunctionBox:AddToggle('PvpBoatToggle', {
+	Text = 'Target Player THESE FUNCTIOS NEED A FIGHTING STYLE',
+	Default = false,
+	Tooltip = 'Will kill nearest player boat'
+})
+
+LeftFunctionBox:AddToggle("PveBoatToggle",{
+	Text = 'Target Npc',
+	Default = true,
+	Tooltip = 'Will kill nearest NPC boat'
+})
+
+LeftFunctionBox:AddInput("FightingStyleBox", {
+	Text = "Equipped fighting style",
+	Default = "Basic Combat",
+	Tooltip = "You need to write a fighting style you have equipped for it to work"
+
+})
+
+LeftFunctionBox:AddSlider('BoatKillAuraSlider', {
+	Text = 'Kill boat aura distance',
+	Default = 1000,
+	Min = 0,
+	Max = 2500,
+	Rounding = 1,
+	Compact = false,
+})
+
+CreateToggle(LeftFunctionBox, "BoatKillAura", {Text = "Boat Kill Aura"})
+local boatsDamaged = {}
+local killAllBoats
+DisableFunctions["KillAllBoats"] = function()
+	if killAllBoats then
+		task.cancel(killAllBoats)
+		killAllBoats = nil
+	end
+end
+LeftFunctionBox:AddToggle("KillAllBoats", {
+	Text = "Kill all boats",
+	Tooltip = "Kill all boats in games except for players",
+	Default = false,
+	Callback = function(Value)
+		if Value then
+			if not PlayerCharacter then return nil end
+
+			local hrp = PlayerCharacter:FindFirstChild("HumanoidRootPart")
+			if not hrp then return nil end
+			killAllBoats = task.spawn(function()
+				while task.wait(0.3) do
+					local function getClosestBoat()
+						local bestDist = math.huge
+						local closestBoat
+						for _, boat in ipairs(game.ReplicatedStorage.RS.UnloadNPCShips:GetChildren()) do
+							if boat:IsA("Model") then
+
+								local primaryPart = boat.PrimaryPart
+								if not primaryPart then
+									continue
+								end
+								if boat:FindFirstChild("OwnerPlayer") then continue end
+
+								local dura = boat:FindFirstChild("Dura") 
+								if not dura or dura.Value <= 0 then
+									boatsDamaged[boat] = nil
+									continue
+								end
+								if boatsDamaged[boat] and boatsDamaged[boat] > 50 then
+									continue
+								end
+
+								local distance = (primaryPart.Position - hrp.Position).Magnitude
+								if distance < bestDist then
+									bestDist = distance
+									closestBoat = boat
+								end
+							end
+						end
+						return closestBoat
+					end
+					local boat = getClosestBoat()
+					for i = 1, 500 do
+						local args = {
+							0,
+							PlayerCharacter,
+							boat,
+							LocalPlayer.Backpack:FindFirstChild(Options.FightingStyleBox.Value),
+							"Attack"
+						}
+						game.ReplicatedStorage.RS.Remotes.Combat.DealDamageBoat3:FireServer(unpack(args))
+						task.wait()
+					end
+					if boatsDamaged[boat] then
+						boatsDamaged[boat] += 1
+					else
+						boatsDamaged[boat] = 1
+					end
+				end
+			end)
+		else
+			DisableFunctions["KillAllBoats"]()
+		end
+	end,
+})
+
+
+RightRandomBox:AddButton({
+	Text = 'Infinite Stamina',
+	Tooltip = "Gives you a very big amount of stamina. Has no downside. \n Cba making a reset. There's no reason to turn it off anyway",
+	Func = function()
+		ReplicatedStorage.RS.Remotes.Combat.StaminaCost:FireServer(-3400)
+		LocalPlayer.CharacterAdded:Connect(function()
+			local hum = LocalPlayer:WaitForChild("Humanoid", 10)
+			if hum then
+				ReplicatedStorage.RS.Remotes.Combat.StaminaCost:FireServer(-3400)
+			end
+		end)
+	end,
+})
+
+
+RightRandomBox:AddButton({
+	Text = 'Disable ship collision damage',
+	Tooltip = 'Your ship no longer takes damage when bumping into stuff \n Effect goes away on ship despawn/refresh',
+	Func = function(Value)
+		local boat = workspace.Boats:FindFirstChild(BoatName)
+		if boat then
+			for _, transmitter in ipairs(boat:GetDescendants()) do
+				if transmitter:IsA("TouchTransmitter") then
+					transmitter:Destroy()
+				end
+			end
+		end
+	end,
+})
+
+RightRandomBox:AddButton({
+	Text = "Optimize lighting",
+	Tooltip = "Disable fog, shadows, make it brighter, etc",
+	Func = function(Value)
+		for _, sky in workspace.Camera:GetChildren() do
+			if sky.Name == "DarkSky1" or sky.Name == "DarkSky2" then
+				sky:Destroy()
+			end
+		end
+
+		local lighting = game:GetService("Lighting")
+		local folder = Instance.new("Folder")
+		local atmo = lighting:FindFirstChild("Atmosphere")
+		folder.Parent = lighting
+		folder.Name = "Atmosphere"
+		if atmo then atmo:Destroy() end
+
+		lighting.GlobalShadows = false
+		lighting.Ambient = Color3.new(1,1,1)
+		lighting.OutdoorAmbient = Color3.new(1,1,1)
+
+		workspace.Camera.ChildAdded:Connect(function(sky)
+			if sky.Name == "DarkSky1" or sky.Name == "DarkSky2" then
+				sky:Destroy()
+			end
+		end)
+
+		for _, effect in lighting:GetChildren() do
+			if effect:IsA("ColorCorrectionEffect") or effect:IsA("SunRaysEffect") or effect:IsA("BlurEffect") or effect:IsA("BloomEffect") then
+				effect.Enabled = false
+			end
+		end
+	end,
+})
+
+RightRandomBox:AddButton({
+	Text = "Disable fall damage",
+	Tooltip = "Disables fall damage",
+	Func = function()
+		if game.ReplicatedStorage.RS.Remotes.Combat:FindFirstChild("FallDamage") then
+			game.ReplicatedStorage.RS.Remotes.Combat.FallDamage:Destroy()
+		end
+	end,
+})
+
+RightRandomBox:AddButton({
+	Text = "Wash",
+	Tooltip = "Removes dark sea weater poison",
+	Func = function()
+		if game.ReplicatedStorage.RS.Remotes.Boats:FindFirstChild("Wash") then
+			game.ReplicatedStorage.RS.Remotes.Boats.Wash:FireServer()
+		end
+	end,
+})
+
+RightRandomBox:AddButton({
+	Text = "Infinite Zoom",
+	Tooltip = "Allows you to scroll your camera forever",
+	Func = function()
+		game.Players.LocalPlayer.CameraMaxZoomDistance = 1e9
+	end,
+})
+
+RightRandomBox:AddInput("RodBox",
+	{
+		Default = "Wooden Rod",	
+		Numeric = false,
+		Finished = true,
+		Text = "Write fishing rod",
+		Tooltip = ""
+	}
+)
+
+
+RightRandomBox:AddInput("BaitBox",
+	{
+		Default = "Normal Bait",	
+		Numeric = false,
+		Finished = true,
+		Text = "Write bait name",
+		Tooltip = ""
+	}
+)
+
+RightRandomBox:AddToggle("AutoFishToggle", {
+	Text = "Silent Autofish",
+	Tooltip = "Catches fish without using rod",
+	Default = false,
+	Callback = function(Value)
+		if Value then
+			MainMaid["AutoFishToggle"] = game.ReplicatedStorage.RS.Remotes.Misc.FishEvent.OnClientEvent:Connect(function(arg1, arg2, ...)
+				if arg1 == LocalPlayer and arg2 == "Bite" then
+					for i = 1, 10 do
+						game:GetService("ReplicatedStorage").RS.Remotes.Misc.FishState:FireServer("Reel")
+						task.wait()
+					end
+					task.wait(0.1)
+					local args = {
+						[1] = LocalPlayer.Backpack:FindFirstChild(Options.RodBox.Value),
+						[3] = Vector3.new(0/0 --[[NaN]], 0/0 --[[NaN]], 0/0 --[[NaN]]),
+						[4] = Options.BaitBox.Value
+					}
+
+					ReplicatedStorage.RS.Remotes.Misc.FishClock:FireServer(unpack(args))
+
+				end
+			end)
+			
+			local args = {
+				[1] = LocalPlayer.Backpack:FindFirstChild(Options.RodBox.Value),
+				[3] = Vector3.new(0/0 --[[NaN]], 0/0 --[[NaN]], 0/0 --[[NaN]]),
+				[4] = Options.BaitBox.Value
+			}
+			ReplicatedStorage.RS.Remotes.Misc.FishClock:FireServer(unpack(args))
+			
+			MainMaid["SecondAutoFishConn"] = task.spawn(function()
+				while task.wait(150) do
+					local args = {
+						[1] = LocalPlayer.Backpack:FindFirstChild(Options.RodBox.Value),
+						[3] = Vector3.new(0/0 --[[NaN]], 0/0 --[[NaN]], 0/0 --[[NaN]]),
+						[4] = Options.BaitBox.Value
+					}
+					ReplicatedStorage.RS.Remotes.Misc.FishClock:FireServer(unpack(args))
+
+				end
+			end)
+
+		else 
+			DisableFunctions["AutoFishToggle"]()
+
+		end
+	end,
+})
+
+
+RightFunctionBox:AddToggle("AutoWash", 
+	{Text = "Auto Wash", Tooltip = "Automatically washes", Default = false, Callback = function(Value)
+		if Value then
+			MainMaid["AutoWash"] = task.spawn(function()	
+				while task.wait(2) do
+					if game.ReplicatedStorage.RS.Remotes.Boats:FindFirstChild("Wash") then
+						game.ReplicatedStorage.RS.Remotes.Boats.Wash:FireServer()
+					end
+				end
+			end)
+		else
+			MainMaid:Remove("AutoWash")
+		end
+	end,}
+)
+
+
+RightFunctionBox:AddDivider()
+RightFunctionBox:AddToggle('PvpToggle', {
+	Text = 'Toggle tp attack to player',
+	Default = false,
+	Tooltip = 'If enabled then attacks will also tp to players (not you)'
+})
+
+RightFunctionBox:AddToggle("PveToggle",{
+	Text = 'Toggle tp attack to npc',
+	Default = true,
+	Tooltip = 'If enabled then attacks will tp to npcs'
+})
+
+CreateToggle(RightFunctionBox, "TpAttacksToTarget", {Text = "Tp Attacks to Target", Tooltip = "Tps attacks to target"}, true )
+
+RightFunctionBox:AddDivider()
+
+RightFunctionBox:AddToggle('CannonPvpToggle', {
+	Text = 'Tps player ship',
+	Default = false,
+	Tooltip = 'If enabled then cannonballs will also tp to nearest plr ship'
+})
+
+RightFunctionBox:AddToggle("CannonPveToggle",{
+	Text = 'Tps bot ship',
+	Default = true,
+	Tooltip = 'If enabled then cannonballs will tp to nearest bot ship'
+})
+
+RightFunctionBox:AddToggle("CannonFortToggle",{
+	Text = 'Tps fort (overrides others)',
+	Default = false,
+	Tooltip = 'Tps cannonballs to either fort castrum or fort montu (will auto select)'
+})
+
+CreateToggle(RightFunctionBox, "TpCannonballsToTarget", {Text = "Tp Cannonballs to Target", Tooltip = "Tps cannonballs to target"}, true )
+
+AttachmentBox:AddToggle("AttachToAllies", {Text = "Attach to Allies", Tooltip = "DOESNT DO ANYTHING", Default = false})
+AttachmentBox:AddToggle("AttachToPlayers", {Text = "Attach to Players", Default = false})
+AttachmentBox:AddToggle("AttachToMobs", {Text = "Attach to Mobs", Default = true})
+
+RightRandomBox:AddToggle("PveToggleKill", {Text = "Kill Pve", Default = true})
+RightRandomBox:AddToggle("PvpToggleKill", {Text = "Kill Players", Default = false})
+CreateToggle(RightRandomBox, "KillAura", {Text = "Kill Aura", Default = false})
+
+RightRandomBox:AddSlider('KillAuraSlider', {
+	Text = 'Kill aura distance',
+	Default = 100,
+	Min = 20,
+	Max = 1000,
+	Rounding = 1,
+	Compact = false,
+})
+
+RightGroupBox:AddDivider()
+
+RightGroupBox:AddButton({
+	Text = "Teleport current story quest",
+	Func = function()
+		if workspace.Camera:FindFirstChild("StoryMarker1") then
+			if PlayerCharacter and PlayerCharacter.HumanoidRootPart then
+				character.HumanoidRootPart.CFrame = workspace.Camera.StoryMarker1.CFrame
+			end
+		end
+	end,
+	Tooltip = "Teleports to current story quest if marker exists"
+})
+
+RightGroupBox:AddButton({
+	Text = "Other story quest marker tp",
+	Func = function()
+		if PlayerCharacter and PlayerCharacter.HumanoidRootPart then
+			for _, child in ipairs(workspace.NPCs:GetDescendants()) do
+				if child:IsA("BillboardGui") then
+					if child.Name == "Story" then
+						PlayerCharacter.HumanoidRootPart.CFrame = child.Parent.CFrame
+					end
+				end
+			end
+		end
+	end,
+	Tooltip = "Teleports to current story quest if marker exists. \n It will tp to the question mark symbol instead. Laggier. "
+})
+
+RightGroupBox:AddButton({
+	Text = "Tp current quest",
+	Func = function()
+		if workspace.Camera:FindFirstChild("QuestMarker1") then
+			if PlayerCharacter and PlayerCharacter.HumanoidRootPart then
+				PlayerCharacter.HumanoidRootPart.CFrame = workspace.Camera.QuestMarker1.CFrame
+			end
+		end
+	end,
+	Tooltip = "Teleports to current quest if marker exists."
+})
+
+RightGroupBox:AddButton({
+	Text = "Tp map marker",
+	Func = function()
+		if workspace.Camera:FindFirstChild("Marker") then
+			if PlayerCharacter and PlayerCharacter.HumanoidRootPart then
+				PlayerCharacter.HumanoidRootPart.CFrame = workspace.Camera.Marker.CFrame
+			end
+		end
+	end,
+	Tooltip = "Teleports to current quest if marker exists."
+})
+
+RightGroupBox:AddButton({
+	Text = "Tp to ship",
+	Func = function()
+		local ship= workspace.Boats:FindFirstChild(BoatName)
+		if ship then
+			if ship:FindFirstChild("Grate") then
+				if PlayerCharacter and PlayerCharacter.HumanoidRootPart then
+					PlayerCharacter.HumanoidRootPart.CFrame = ship.Grate.CFrame
+				end
+			else
+				PlayerCharacter.HumanoidRootPart.CFrame = ship.WorldPivot
+			end
+		end
+	end,
+	Tooltip = "Teleports to your ship if it exists."
+})
+
+
+local dropDownIsland = {}
+if workspace:FindFirstChild("Map") then
+	for _, folder in ipairs(workspace.Map:GetChildren()) do
+		if folder:FindFirstChild("Center") then
+			table.insert(dropDownIsland, folder.Name)
+		end
+	end
+end
+RightGroupBox:AddDropdown('IslandTp', {
+	Values = dropDownIsland,
+	Default = 0, 
+	Multi = false, 
+
+	Text = 'Tp to island',
+	Tooltip = 'Tps you to selected island', 
+
+	Callback = function(Value)
+		if PlayerCharacter and PlayerCharacter.HumanoidRootPart then
+			PlayerCharacter.HumanoidRootPart.CFrame = workspace.Map[Value]["Center"].CFrame
+		end
+	end
+})
+RightGroupBox:AddDivider()
+
+
+
+
+CreateToggle(MainMovementBox, "NoClip", {Text = "No Clip"})
+CreateToggle(MainMovementBox, "Fly", {Text = "Fly"})
+CreateToggle(MainMovementBox, "SpeedHack", {Text = "Speed Hack"})
+CreateToggle(MainMovementBox, "InfiniteJump", {Text = "Infinite Jump"})
+
+RightGroupBox:AddInput("BoatSpeedbox",
+	{
+		Default = "10000",
+		Numeric = true,
+		Finished = true,
+		Text = "Insert boat speed",
+		Tooltip = ""
+	}
+)
+
+CreateToggle(RightGroupBox, "BoatSpeed", {Text = "Boat Speed"}, true)
+CreateToggle(RightGroupBox, "BoatNoClip", {Text = "Boat NoClip"}, true)
+CreateToggle(LeftEspBox, "PlayerEsp", {Text = "Player ESP"})
+CreateToggle(LeftEspBox, "MobEsp", {Text = "Mob ESP"})
+CreateToggle(LeftEspBox, "UnloadMobEsp", {Text = "Unload Mob ESP"}, true)
+CreateToggle(LeftEspBox, "ChestESP", {Text = "Chest ESP"}, true)
+CreateToggle(LeftEspBox, "NPCEsp", {Text = "NPC ESP"})
+CreateToggle(LeftEspBox, "DarkSeaEsp", {Text = "Dark Sea ESP"})
+
+
+RightGroupBox:AddDivider()
+CreateToggle(RightGroupBox, "PlayerNotifier", {Text = "Notify player join"}, true)
+CreateToggle(RightGroupBox, "ModNotifier", {Text = "Notify mod join"}, true)
+CreateToggle(AttachmentBox, "AttachToEnemy", {Text = "Attach to closest entity"})
+CreateToggle(AttachmentBox, "LockOn", {Text = "Lock on to entity"})
+
+AttachmentBox:AddSlider("LockOnDistance", {Text = "Lock On Min Distance", Tooltip = "Minimum distance to start tracking\nUsed to stop spinning like crazy up close", Default = 1, Min = 0, Max = 10, Rounding = 1})
+
+
+Library:OnUnload(function()
+	for i, func in pairs(DisableFunctions) do
+		func()
+	end
+	Library.Unloaded = true
+	RemoveMaids()
+	Tweening.clear()
+	getgenv().ArcaneOdysseyLibraryLoaded = false
+end)
+
+-- UI Settings
+local MenuGroup = Tabs['UI Settings']:AddLeftGroupbox('Menu')
+
+
+MenuGroup:AddToggle("KeybindMenuOpen", { Default = Library.KeybindFrame.Visible, Text = "Open Keybind Menu", Callback = function(value) Library.KeybindFrame.Visible = value end})
+MenuGroup:AddToggle("ShowCustomCursor", {Text = "Custom Cursor", Default = false, Callback = function(Value) Library.ShowCustomCursor = Value end})
+MenuGroup:AddDivider()
+MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", { Default = "End", NoUI = true, Text = "Menu keybind" })
+MenuGroup:AddButton("Unload", function() Library:Unload() end)	
+
+
+Library.ToggleKeybind = Options.MenuKeybind 
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+
+-- Ignore keys that are used by ThemeManager.
+-- (we dont want configs to save themes, do we?)
+SaveManager:IgnoreThemeSettings()
+
+SaveManager:SetIgnoreIndexes({ 'MenuKeybind' })
+
+ThemeManager:SetFolder('Kintama/Arcane-Odyssey/Themes')
+SaveManager:SetFolder('Kintama/Arcane-Odyssey')
+
+
+SaveManager:BuildConfigSection(Tabs['UI Settings'])
+
+ThemeManager:ApplyToTab(Tabs['UI Settings'])
+
+
+SaveManager:LoadAutoloadConfig()
+
+getgenv().ArcaneOdysseyLibraryLoaded = true
